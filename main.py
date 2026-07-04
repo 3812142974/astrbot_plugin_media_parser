@@ -15,8 +15,10 @@ from .core.parser import ParserManager
 from .core.parser.utils import extract_url_from_card_data
 from .core.downloader import DownloadManager
 from .core.storage import (
+    cleanup_expired_marked_in,
     cleanup_files,
     cleanup_marked_in,
+    mark_files_expire_after,
     ParseRecordManager,
     register_files_with_token_service,
 )
@@ -71,6 +73,7 @@ class VideoParserPlugin(Star):
 
         self.message_sender = MessageSender()
         self._cleanup_tasks: set[asyncio.Task] = set()
+        self._expired_cleanup_task: Optional[asyncio.Task] = None
         rate_limit = cfg.parse_rate_limit
         self.parse_record_manager = ParseRecordManager(
             record_file=rate_limit.record_file,
@@ -89,8 +92,11 @@ class VideoParserPlugin(Star):
             reply_timeout_minutes=cfg.bilibili.admin_reply_timeout_minutes,
             request_cooldown_minutes=cfg.bilibili.admin_request_cooldown_minutes,
         )
+        self._cleanup_expired_cache_once()
+        self._start_expired_cache_cleanup()
 
     async def terminate(self):
+        await self._shutdown_expired_cache_cleanup()
         await self._shutdown_delayed_cleanups()
         await self.admin_cookie_assist.shutdown()
         await self.download_manager.shutdown()
@@ -119,9 +125,68 @@ class VideoParserPlugin(Star):
             logger.warning(f"延迟清理文件失败: {e}")
 
     def _schedule_delayed_cleanup(self, files, delay: int):
-        task = asyncio.create_task(self._delayed_cleanup(list(files), delay))
+        files = list(files)
+        marked = mark_files_expire_after(files, delay)
+        if marked and self.config_manager.admin.debug_mode:
+            logger.debug(f"已写入 {marked} 个媒体缓存子目录的过期标记")
+        task = asyncio.create_task(self._delayed_cleanup(files, delay))
         self._cleanup_tasks.add(task)
         task.add_done_callback(self._cleanup_tasks.discard)
+
+    def _cleanup_expired_cache_once(self) -> None:
+        cache_dir = self.download_manager.cache_dir
+        if not cache_dir:
+            return
+        try:
+            subdirs_cleaned, files_cleaned = cleanup_expired_marked_in(
+                cache_dir,
+                ttl_seconds=self.config_manager.relay.file_token_ttl,
+            )
+            if subdirs_cleaned:
+                logger.info(
+                    f"已清理过期媒体缓存: {subdirs_cleaned} 个子目录, "
+                    f"{files_cleaned} 个文件"
+                )
+        except Exception as e:
+            logger.warning(f"清理过期媒体缓存失败: {e}")
+
+    def _expired_cleanup_interval(self) -> int:
+        ttl = self.config_manager.relay.file_token_ttl
+        try:
+            ttl = int(ttl)
+        except (TypeError, ValueError):
+            ttl = 300
+        return max(30, min(ttl, 300))
+
+    async def _expired_cache_cleanup_loop(self) -> None:
+        try:
+            while True:
+                self._cleanup_expired_cache_once()
+                await asyncio.sleep(self._expired_cleanup_interval())
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"过期媒体缓存清理任务异常退出: {e}")
+
+    def _start_expired_cache_cleanup(self) -> None:
+        if not self.download_manager.cache_dir:
+            return
+        if self._expired_cleanup_task and not self._expired_cleanup_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._expired_cleanup_task = loop.create_task(
+            self._expired_cache_cleanup_loop()
+        )
+
+    async def _shutdown_expired_cache_cleanup(self):
+        task = self._expired_cleanup_task
+        self._expired_cleanup_task = None
+        if task and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     async def _shutdown_delayed_cleanups(self):
         tasks = list(self._cleanup_tasks)
@@ -323,6 +388,7 @@ class VideoParserPlugin(Star):
 
     @filter.event_message_type(EventMessageType.ALL)
     async def auto_parse(self, event: AstrMessageEvent):
+        self._start_expired_cache_cleanup()
         cfg = self.config_manager
         self.admin_cookie_assist.try_update_admin_origin(event)
 
