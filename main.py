@@ -38,7 +38,7 @@ from .core.interaction.platform.bilibili import BilibiliAdminCookieAssistManager
     "astrbot_plugin_media_parser",
     "drdon1234",
     "聚合解析流媒体平台链接，转换为媒体直链发送",
-    "6.3.1"
+    "6.3.2"
 )
 class VideoParserPlugin(Star):
 
@@ -68,7 +68,7 @@ class VideoParserPlugin(Star):
             cache_dir=cfg.download.cache_dir,
             cache_dir_available=cfg.download.cache_dir_available,
             max_concurrent_downloads=cfg.download.max_concurrent_downloads,
-            video_cover_only=cfg.message.video_cover_only,
+            video_cover_only=cfg.message.media_display.video_cover_only,
         )
 
         self.message_sender = MessageSender()
@@ -256,9 +256,20 @@ class VideoParserPlugin(Star):
     @staticmethod
     def _has_text_metadata(metadata: Dict[str, Any]) -> bool:
         """判断解析结果是否包含可发送的文本元数据。"""
+        fields = metadata.get("_text_metadata_fields")
+        if not isinstance(fields, dict):
+            fields = {}
+        candidates = (
+            ("title", "title"),
+            ("author", "author"),
+            ("description", "desc"),
+            ("timestamp", "timestamp"),
+            ("original_link", "url"),
+        )
         return any(
-            bool(str(metadata.get(key) or "").strip())
-            for key in ("title", "author", "desc", "timestamp")
+            bool(fields.get(field_name, True)) and
+            bool(str(metadata.get(metadata_key) or "").strip())
+            for field_name, metadata_key in candidates
         )
 
     def _filter_links_by_output(self, links_with_parser):
@@ -267,7 +278,7 @@ class VideoParserPlugin(Star):
         filtered = []
         for link, parser in links_with_parser:
             parser_name = getattr(parser, "name", "")
-            if cfg.message.controller_has_any_output(parser_name):
+            if cfg.parser_output.controller_has_any_output(parser_name):
                 filtered.append((link, parser))
             elif cfg.admin.debug_mode:
                 self.logger.debug(
@@ -280,10 +291,13 @@ class VideoParserPlugin(Star):
         """将每条解析结果的有效输出开关写入 metadata。"""
         for metadata in metadata_list:
             text_enabled, rich_enabled = (
-                self.config_manager.message.output_for_metadata(metadata)
+                self.config_manager.parser_output.output_for_metadata(metadata)
             )
             metadata["_enable_text_metadata"] = text_enabled
             metadata["_enable_rich_media"] = rich_enabled
+            metadata["_text_metadata_fields"] = (
+                self.config_manager.message.text_metadata.visibility()
+            )
 
     @staticmethod
     def _event_context(event: AstrMessageEvent) -> Dict[str, Any]:
@@ -356,8 +370,7 @@ class VideoParserPlugin(Star):
         )
         has_text = (
             self._has_text_metadata(metadata) or
-            bool(metadata.get("access_message")) or
-            has_media
+            bool(metadata.get("access_message"))
         )
         return bool((rich_enabled and has_media) or (text_enabled and has_text))
 
@@ -392,7 +405,7 @@ class VideoParserPlugin(Star):
         cfg = self.config_manager
         self.admin_cookie_assist.try_update_admin_origin(event)
 
-        if not cfg.message.has_any_output():
+        if not cfg.parser_output.has_any_output():
             if cfg.admin.debug_mode:
                 self.logger.debug("文本元数据和富媒体均关闭，跳过解析")
             return
@@ -551,13 +564,13 @@ class VideoParserPlugin(Star):
 
                 async def send_opening_once() -> None:
                     nonlocal opening_sent
-                    if not cfg.message.opening_enabled:
+                    if not cfg.message.opening.enabled:
                         return
                     async with opening_lock:
                         if opening_sent:
                             return
                         msg_text = (
-                            cfg.message.opening_content
+                            cfg.message.opening.content
                             or "流媒体解析bot为您服务 ٩( 'ω' )و"
                         )
                         try:
@@ -661,7 +674,7 @@ class VideoParserPlugin(Star):
 
             build_result = build_all_nodes(
                 processed_metadata_list,
-                cfg.message.pack_mode,
+                cfg.message.packing.mode,
                 cfg.download.large_video_threshold_mb,
                 cfg.download.max_video_size_mb,
                 True,
@@ -694,11 +707,11 @@ class VideoParserPlugin(Star):
                 return
 
             node_counts = summarize_node_counts(build_result.all_link_nodes)
-            should_pack = cfg.message.should_pack(**node_counts)
+            should_pack = cfg.message.packing.should_pack(**node_counts)
 
             if cfg.admin.debug_mode:
                 self.logger.debug(
-                    f"开始发送结果，打包模式: {cfg.message.pack_mode}, "
+                    f"开始发送结果，打包模式: {cfg.message.packing.mode}, "
                     f"实际打包: {should_pack}, "
                     f"图片节点: {node_counts['image_count']}, "
                     f"视频节点: {node_counts['video_count']}, "
@@ -719,7 +732,9 @@ class VideoParserPlugin(Star):
                         event,
                         build_result.all_link_nodes,
                         build_result.link_metadata,
-                        quote_user_message=cfg.message.quote_user_message,
+                        quote_user_message=(
+                            cfg.message.text_metadata.quote_user_message
+                        ),
                         quote_message_id=quote_source_message_id,
                     )
 
