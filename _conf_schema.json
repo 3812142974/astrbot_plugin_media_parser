@@ -113,6 +113,30 @@
                     "仅富媒体"
                 ],
                 "default": "全部发送"
+            },
+            "pixiv": {
+                "description": "Pixiv",
+                "type": "string",
+                "options": [
+                    "关闭",
+                    "全部发送",
+                    "仅文本",
+                    "仅富媒体"
+                ],
+                "default": "全部发送"
+            }
+        }
+    },
+    "pixiv": {
+        "description": "Pixiv 设置",
+        "type": "object",
+        "hint": "Pixiv 解析需要 Cookie 才能获取原图；无 Cookie 也能解析但可能仅返回缩略图。",
+        "items": {
+            "cookie": {
+                "description": "Pixiv Cookie",
+                "type": "string",
+                "hint": "包含 PHPSESSID 的完整 Cookie 字符串。登录 pixiv.net 后从浏览器开发者工具复制。",
+                "default": ""
             }
         }
     },

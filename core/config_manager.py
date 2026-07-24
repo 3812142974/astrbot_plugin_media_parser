@@ -17,7 +17,8 @@ from .parser.platform import (
     XianyuParser,
     ToutiaoParser,
     XiaoheiheParser,
-    TwitterParser
+    TwitterParser,
+    PixivParser,
 )
 from .translation.provider_defs import (
     LLM_PROVIDER_DEFAULTS,
@@ -47,6 +48,7 @@ PARSER_OUTPUT_KEYS = (
     "toutiao",
     "xiaoheihe",
     "twitter",
+    "pixiv",
 )
 
 OUTPUT_MODE_DISABLED = "关闭"
@@ -372,6 +374,11 @@ class BilibiliEnhancedConfig:
 
 
 @dataclass
+class PixivConfig:
+    cookie: str = ""
+
+
+@dataclass
 class MediaRelayConfig:
     enabled: bool = False
     callback_api_base: str = ""
@@ -449,6 +456,7 @@ class ConfigManager:
         self._enable_toutiao = self._parser_enabled("toutiao")
         self._enable_xiaoheihe = self._parser_enabled("xiaoheihe")
         self._enable_twitter = self._parser_enabled("twitter")
+        self._enable_pixiv = self._parser_enabled("pixiv")
 
         # --- message ---
         message_raw = config.get("message", {})
@@ -761,6 +769,14 @@ class ConfigManager:
             admin_request_cooldown_minutes=admin_request_cooldown,
         )
 
+        # --- pixiv ---
+        pixiv_raw = config.get("pixiv", {})
+        if not isinstance(pixiv_raw, dict):
+            pixiv_raw = {}
+        self.pixiv = PixivConfig(
+            cookie=str(pixiv_raw.get("cookie", "") or "").strip(),
+        )
+
         # --- proxy ---
         proxy_raw = config.get("proxy", {})
         twitter_proxy = proxy_raw.get("twitter", {})
@@ -868,6 +884,10 @@ class ConfigManager:
                 use_image_proxy=self.proxy.twitter_use_image_proxy,
                 use_video_proxy=self.proxy.twitter_use_video_proxy,
                 proxy_url=proxy_addr,
+            ))
+        if self._enable_pixiv:
+            parsers.append(PixivParser(
+                cookie=self.pixiv.cookie,
             ))
 
         if not parsers:
