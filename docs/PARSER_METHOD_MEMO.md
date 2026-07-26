@@ -255,10 +255,10 @@ Component_Play_Playinfo
 
 支持能力：视频 / 图片 / 文本 / 热评
 
-小红书要兼容移动端和 PC 端两套状态树。短链 `xhslink.com` 只是入口，必须先展开到正式笔记页。
+小红书要兼容移动端和 PC 端两套状态树。短链 `xhslink.com` / `xhslink.cn` 只是入口，必须先展开到正式笔记页。
 
 ```text
-xhslink.com / xiaohongshu.com
+xhslink.com / xhslink.cn / xiaohongshu.com
   ↓
 展开短链
   ↓
