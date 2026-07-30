@@ -17,7 +17,8 @@ from .parser.platform import (
     XianyuParser,
     ToutiaoParser,
     XiaoheiheParser,
-    TwitterParser
+    TwitterParser,
+    PixivParser,
 )
 from .translation.provider_defs import (
     LLM_PROVIDER_DEFAULTS,
@@ -47,6 +48,7 @@ PARSER_OUTPUT_KEYS = (
     "toutiao",
     "xiaoheihe",
     "twitter",
+    "pixiv",
 )
 
 OUTPUT_MODE_DISABLED = "关闭"
@@ -356,6 +358,7 @@ class ProxyConfig:
     twitter_use_image_proxy: bool = True
     twitter_use_video_proxy: bool = True
     tiktok_use_proxy: bool = False
+    pixiv_use_proxy: bool = False
 
 
 @dataclass
@@ -369,6 +372,11 @@ class BilibiliEnhancedConfig:
     enable_admin_assist: bool = False
     admin_reply_timeout_minutes: int = 1440
     admin_request_cooldown_minutes: int = 1440
+
+
+@dataclass
+class PixivConfig:
+    cookie: str = ""
 
 
 @dataclass
@@ -449,6 +457,7 @@ class ConfigManager:
         self._enable_toutiao = self._parser_enabled("toutiao")
         self._enable_xiaoheihe = self._parser_enabled("xiaoheihe")
         self._enable_twitter = self._parser_enabled("twitter")
+        self._enable_pixiv = self._parser_enabled("pixiv")
 
         # --- message ---
         message_raw = config.get("message", {})
@@ -761,6 +770,14 @@ class ConfigManager:
             admin_request_cooldown_minutes=admin_request_cooldown,
         )
 
+        # --- pixiv ---
+        pixiv_raw = config.get("pixiv", {})
+        if not isinstance(pixiv_raw, dict):
+            pixiv_raw = {}
+        self.pixiv = PixivConfig(
+            cookie=str(pixiv_raw.get("cookie", "") or "").strip(),
+        )
+
         # --- proxy ---
         proxy_raw = config.get("proxy", {})
         twitter_proxy = proxy_raw.get("twitter", {})
@@ -771,6 +788,7 @@ class ConfigManager:
             twitter_use_image_proxy=twitter_proxy.get("image", True),
             twitter_use_video_proxy=twitter_proxy.get("video", True),
             tiktok_use_proxy=proxy_raw.get("tiktok", False),
+            pixiv_use_proxy=proxy_raw.get("pixiv", False),
         )
 
         # --- admin ---
@@ -868,6 +886,11 @@ class ConfigManager:
                 use_image_proxy=self.proxy.twitter_use_image_proxy,
                 use_video_proxy=self.proxy.twitter_use_video_proxy,
                 proxy_url=proxy_addr,
+            ))
+        if self._enable_pixiv:
+            parsers.append(PixivParser(
+                cookie=self.pixiv.cookie,
+                proxy=proxy_addr if self.proxy.pixiv_use_proxy else None,
             ))
 
         if not parsers:
