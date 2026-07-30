@@ -376,6 +376,7 @@ class BilibiliEnhancedConfig:
 @dataclass
 class PixivConfig:
     cookie: str = ""
+    use_proxy: bool = False
 
 
 @dataclass
@@ -775,6 +776,7 @@ class ConfigManager:
             pixiv_raw = {}
         self.pixiv = PixivConfig(
             cookie=str(pixiv_raw.get("cookie", "") or "").strip(),
+            use_proxy=bool(pixiv_raw.get("use_proxy", False)),
         )
 
         # --- proxy ---
@@ -888,6 +890,7 @@ class ConfigManager:
         if self._enable_pixiv:
             parsers.append(PixivParser(
                 cookie=self.pixiv.cookie,
+                proxy=proxy_addr if self.pixiv.use_proxy else None,
             ))
 
         if not parsers:

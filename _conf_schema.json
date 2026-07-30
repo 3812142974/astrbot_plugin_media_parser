@@ -137,6 +137,12 @@
                 "type": "string",
                 "hint": "包含 PHPSESSID 的完整 Cookie 字符串。登录 pixiv.net 后从浏览器开发者工具复制。",
                 "default": ""
+            },
+            "use_proxy": {
+                "description": "解析使用系统代理",
+                "type": "bool",
+                "hint": "开启后解析请求会经过代理设置中配置的代理地址。",
+                "default": false
             }
         }
     },

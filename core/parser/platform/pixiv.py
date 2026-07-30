@@ -118,9 +118,11 @@ class PixivParser(BaseVideoParser):
     def __init__(
         self,
         cookie: str = "",
+        proxy: Optional[str] = None,
     ):
         super().__init__("pixiv")
         self.cookie = cookie
+        self.proxy = proxy
 
     # ── URL 匹配 ──────────────────────────────────────────
 
@@ -154,14 +156,14 @@ class PixivParser(BaseVideoParser):
         # 获取作品元信息
         info_url = f"https://www.pixiv.net/ajax/illust/{illust_id}"
         info_data = await _fetch_json(
-            session, info_url, illust_id, "元信息", self.cookie,
+            session, info_url, illust_id, "元信息", self.cookie, proxy=self.proxy,
         )
         body = info_data.get("body") or {}
 
         # 获取多页图片 URL
         pages_url = f"https://www.pixiv.net/ajax/illust/{illust_id}/pages?lang=zh"
         pages_data = await _fetch_json(
-            session, pages_url, illust_id, "pages", self.cookie,
+            session, pages_url, illust_id, "pages", self.cookie, proxy=self.proxy,
         )
         raw_pages = pages_data.get("body") or []
 
