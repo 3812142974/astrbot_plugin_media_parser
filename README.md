@@ -54,7 +54,7 @@ _✨ 自动解析流媒体平台链接，转换为媒体直链发送 ✨_
 </tr>
 <tr>
 <td class="center"><strong>小红书</strong></td>
-<td>短链（<code>xhslink.com/...</code>）<br>笔记链接（<code>www.xiaohongshu.com/explore/...</code>、<code>www.xiaohongshu.com/discovery/item/...</code>）<br>小程序卡片（<code>message.meta.news.jumpUrl</code>）</td>
+<td>短链（<code>xhslink.com/...</code>、<code>xhslink.cn/...</code>）<br>笔记链接（<code>www.xiaohongshu.com/explore/...</code>、<code>www.xiaohongshu.com/discovery/item/...</code>）<br>小程序卡片（<code>message.meta.news.jumpUrl</code>）</td>
 <td class="center">视频 / 图片 / 文本 / 热评</td>
 </tr>
 <tr>
