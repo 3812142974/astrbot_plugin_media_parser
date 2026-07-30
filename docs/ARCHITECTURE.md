@@ -20,6 +20,7 @@
 - 今日头条：支持 视频 / 图片 / 文本；覆盖文章、微头条、视频、短链跳转页和 `message.meta.news.jumpUrl` 小程序卡片。
 - 小黑盒：支持 视频 / 图片 / 文本；覆盖游戏详情页和 BBS/link 帖子。
 - Twitter/X：支持 视频 / 图片 / 文本；优先 FxTwitter/FxEmbed，服务不可用时回退 Guest GraphQL。
+- Pixiv：支持 图片 / 文本；覆盖插画和漫画作品页、多页原图候选、Cookie 访问限制与解析/图片代理。
 
 ### 1.2 核心模块结构
 
@@ -42,6 +43,7 @@ astrbot_plugin_media_parser/
     │   ├── runtime_manager/
     │   │   └── bilibili/auth.py     # BilibiliAuthRuntime，Cookie 校验与扫码登录
     │   └── platform/                # 各平台解析器
+    │       ├── pixiv.py             # Pixiv 插画/漫画解析器
     │       ├── xianyu.py            # 闲鱼商品页解析器
     │       └── toutiao.py           # 今日头条文章/微头条/视频解析器
     ├── downloader/
@@ -151,8 +153,9 @@ cache/runtime_manager/bilibili/cookie.json
 - `PermissionConfig`：管理员、白名单、黑名单，提供 `check()`。
 - `DownloadConfig`：大小限制、缓存目录、缓存可用性、下载并发。
 - `ParseRateLimitConfig`：同链接/同用户解析频率限制、时间窗和持久化记录文件。
-- `ProxyConfig`：全局代理、TikTok、小黑盒、Twitter/X 代理开关。
+- `ProxyConfig`：全局代理、TikTok、小黑盒、Twitter/X、Pixiv 代理开关。
 - `BilibiliEnhancedConfig`：Cookie、最高画质、运行时文件、管理员协助登录。
+- `PixivConfig`：Pixiv Web Ajax API 使用的可选 Cookie。
 - `MediaRelayConfig`：文件 Token 中转开关、回调地址、TTL。
 - `TranslationConfig`：翻译开关、翻译范围、目标语言、AstrBot 内置或自定义大模型配置。输入/输出上限固定为 4000，超时固定为 60 秒，随机性固定为 0。
 - `AdminConfig`：清理关键词和 debug 模式。
@@ -487,6 +490,8 @@ use_image_proxy/use_video_proxy/proxy_url
 error
 ```
 
+Pixiv 解析器还会附加 `pixiv_illust_id`、`pixiv_user_id`、`pixiv_x_restrict`、`pixiv_ai_type`、`pixiv_sanity_level` 和 `pixiv_page_count`，用于保留作品访问限制与分页信息。
+
 下载层回填：
 
 ```text
@@ -554,6 +559,7 @@ DASH 临时 `.m4s` 在合并后由 DASH 处理器清理；M3U8 临时分片目�
 proxy.address
 proxy.tiktok
 proxy.xiaoheihe_video
+proxy.pixiv
 proxy.twitter.parse
 proxy.twitter.image
 proxy.twitter.video
@@ -564,6 +570,7 @@ proxy.twitter.video
 - `TikTokParser`：TikTok 解析和媒体代理。
 - `XiaoheiheParser`：视频代理。
 - `TwitterParser`：Twitter/X 解析、图片、视频代理。
+- `PixivParser`：Pixiv Web Ajax API 解析和图片下载共用同一代理开关。
 
 解析结果写入：
 
@@ -586,6 +593,7 @@ metadata.proxy_url > ConfigManager.proxy.address
 ### 5.1 并发模型
 
 - `ParserManager.parse_text()` 对去重后的链接并发解析。
+- Pixiv 等平台解析器使用 `Config.PARSER_MAX_CONCURRENT` 控制单平台解析并发，Pixiv 每个作品会依次请求元信息和分页图片接口。
 - `main.py` 在至少一条 metadata 启用富媒体输出时创建下载处理任务，并用 `asyncio.as_completed()` 按完成顺序处理开场语触发。
 - `DownloadManager` 使用实例级 `_download_semaphore` 限制所有本地媒体下载总并发。
 - Range 下载内部使用分片级 semaphore。
@@ -596,6 +604,7 @@ metadata.proxy_url > ConfigManager.proxy.address
 ### 5.2 异常处理
 
 - 解析阶段：`SkipParse` 跳过；普通异常生成 error metadata；`CancelledError` 继续抛出。
+- Pixiv Ajax 返回 HTML 时会在 HTTP 状态抛错前识别 Cloudflare 防护页，避免把拦截页当作 JSON 处理。
 - 下载阶段：单个候选失败会尝试下一个候选；媒体项全部失败写入 skip reason；本条 metadata 全部媒体失败时清理对应缓存子目录。
 - 大小限制：普通视频下载前预检，DASH/M3U8/强制缓存视频下载后再兜底检查，超限会删除文件并置为 `skip`。
 - 发送阶段：单个大媒体节点发送失败记录 warning 后继续；主发送异常会继续进入 finally 清理。

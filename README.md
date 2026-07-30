@@ -9,7 +9,7 @@ _✨ 自动解析流媒体平台链接，转换为媒体直链发送 ✨_
 [![License](https://img.shields.io/badge/License-AGPLv3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0.html)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![AstrBot](https://img.shields.io/badge/AstrBot-Plugin-orange.svg)](https://github.com/AstrBotDevs/AstrBot)
-[![Version](https://img.shields.io/badge/Version-v6.3.2-green.svg)](https://github.com/drdon1234/astrbot_plugin_media_parser)
+[![Version](https://img.shields.io/badge/Version-v6.4.0-green.svg)](https://github.com/drdon1234/astrbot_plugin_media_parser)
 [![GitHub](https://img.shields.io/badge/作者-drdon1234-blue)](https://github.com/drdon1234)
 
 </div>
@@ -219,6 +219,7 @@ Cookie 会过期失效，开启 `管理员协助登录` 后，当 Cookie 失效�
 ## 🖼️ Pixiv Cookie 与代理
 
 Pixiv 支持插画和漫画的多页图片解析，优先下载原图，原图不可用时自动尝试较低分辨率图片。
+解析结果会附带作品标签，并标注 R-18、R-18G 和 AI 生成状态。
 
 1. 公开作品通常可直接解析；需要登录或受年龄限制的作品应在 `Pixiv 设置 → Pixiv Cookie` 中填写包含 `PHPSESSID` 的完整 Cookie
 2. 无法直连 Pixiv 时，填写 `代理设置 → 代理地址` 并开启 `Pixiv解析与图片下载使用代理`
