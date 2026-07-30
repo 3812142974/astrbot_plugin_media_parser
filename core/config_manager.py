@@ -358,6 +358,7 @@ class ProxyConfig:
     twitter_use_image_proxy: bool = True
     twitter_use_video_proxy: bool = True
     tiktok_use_proxy: bool = False
+    pixiv_use_proxy: bool = False
 
 
 @dataclass
@@ -376,7 +377,6 @@ class BilibiliEnhancedConfig:
 @dataclass
 class PixivConfig:
     cookie: str = ""
-    use_proxy: bool = False
 
 
 @dataclass
@@ -776,7 +776,6 @@ class ConfigManager:
             pixiv_raw = {}
         self.pixiv = PixivConfig(
             cookie=str(pixiv_raw.get("cookie", "") or "").strip(),
-            use_proxy=bool(pixiv_raw.get("use_proxy", False)),
         )
 
         # --- proxy ---
@@ -789,6 +788,7 @@ class ConfigManager:
             twitter_use_image_proxy=twitter_proxy.get("image", True),
             twitter_use_video_proxy=twitter_proxy.get("video", True),
             tiktok_use_proxy=proxy_raw.get("tiktok", False),
+            pixiv_use_proxy=proxy_raw.get("pixiv", False),
         )
 
         # --- admin ---
@@ -890,7 +890,7 @@ class ConfigManager:
         if self._enable_pixiv:
             parsers.append(PixivParser(
                 cookie=self.pixiv.cookie,
-                proxy=proxy_addr if self.pixiv.use_proxy else None,
+                proxy=proxy_addr if self.proxy.pixiv_use_proxy else None,
             ))
 
         if not parsers:
