@@ -627,7 +627,7 @@
                 "default": true
             },
             "pixiv": {
-                "description": "Pixiv解析使用代理",
+                "description": "Pixiv解析与图片下载使用代理",
                 "type": "bool",
                 "default": false
             },

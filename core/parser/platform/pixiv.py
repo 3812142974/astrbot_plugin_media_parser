@@ -7,6 +7,7 @@ Pixiv 插画/漫画解析器。
 3. 返回图片直链集合供下载管理器处理
 """
 
+import asyncio
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -14,6 +15,7 @@ from typing import Any, Dict, List, Optional
 import aiohttp
 
 from .base import BaseVideoParser
+from ...constants import Config
 from ...logger import logger
 from ...types import MediaMetadata
 from ..utils import build_request_headers
@@ -22,7 +24,7 @@ from ..utils import build_request_headers
 # ── URL 正则 ──────────────────────────────────────────────
 
 PIXIV_URL_PATTERN = re.compile(
-    r"(?:https?://)?(?:www\.)?pixiv\.net"
+    r"(?<![A-Za-z0-9_.-])(?:https?://)?(?:www\.)?pixiv\.net"
     r"/(?:en/)?"
     r"(?:artworks|i)/(?P<id>\d{5,12})",
     re.IGNORECASE,
@@ -81,12 +83,16 @@ async def _fetch_json(
             f"status={resp.status}, content-type={content_type}"
         )
 
-        resp.raise_for_status()
-
-        if "text/html" in content_type.lower() or body_text.lstrip().lower().startswith("<!doctype html"):
+        is_html = (
+            "text/html" in content_type.lower()
+            or body_text.lstrip().lower().startswith("<!doctype html")
+        )
+        if is_html:
             if "Just a moment" in body_text or "just a moment" in body_text:
                 raise RuntimeError("Pixiv Ajax 被 Cloudflare 拦截，Cookie 可能已失效")
             raise RuntimeError(f"Pixiv Ajax 返回 HTML，无法解析：{body_preview!r}")
+
+        resp.raise_for_status()
 
         try:
             data = await resp.json()
@@ -100,16 +106,16 @@ async def _fetch_json(
         return data
 
 
-def _extract_pixiv_ids(text: str) -> List[str]:
-    """从文本中提取所有 Pixiv 作品 ID（去重，保持顺序）。"""
-    ids: List[str] = []
+def _extract_pixiv_links(text: str) -> List[str]:
+    """提取 Pixiv 作品链接，按作品 ID 去重并保留原始链接形态。"""
+    links: List[str] = []
     seen: set[str] = set()
     for match in PIXIV_URL_PATTERN.finditer(text):
         illust_id = match.group("id")
         if illust_id and illust_id not in seen:
             seen.add(illust_id)
-            ids.append(illust_id)
-    return ids
+            links.append(match.group(0))
+    return links
 
 
 class PixivParser(BaseVideoParser):
@@ -123,6 +129,7 @@ class PixivParser(BaseVideoParser):
         super().__init__("pixiv")
         self.cookie = cookie
         self.proxy = proxy
+        self.semaphore = asyncio.Semaphore(Config.PARSER_MAX_CONCURRENT)
 
     # ── URL 匹配 ──────────────────────────────────────────
 
@@ -130,12 +137,19 @@ class PixivParser(BaseVideoParser):
         return bool(PIXIV_URL_PATTERN.search(url))
 
     def extract_links(self, text: str) -> List[str]:
-        ids = _extract_pixiv_ids(text)
-        return [f"https://www.pixiv.net/artworks/{i}" for i in ids]
+        return _extract_pixiv_links(text)
 
     # ── 解析 ──────────────────────────────────────────────
 
     async def parse(
+        self,
+        session: aiohttp.ClientSession,
+        url: str,
+    ) -> Optional[MediaMetadata]:
+        async with self.semaphore:
+            return await self._parse(session, url)
+
+    async def _parse(
         self,
         session: aiohttp.ClientSession,
         url: str,
@@ -242,6 +256,8 @@ class PixivParser(BaseVideoParser):
                 user_agent=PIXIV_USER_AGENT,
             ),
             "video_headers": {},
+            "use_image_proxy": bool(self.proxy),
+            "proxy_url": self.proxy,
             "has_valid_media": bool(image_urls),
         }
 
