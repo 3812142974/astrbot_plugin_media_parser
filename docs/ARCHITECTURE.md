@@ -61,7 +61,8 @@ astrbot_plugin_media_parser/
     │       └── video_cover.py       # 视频仅封面模式的首帧截取
     ├── message_adapter/
     │   ├── node_builder.py          # Plain/Image/Video 节点构建
-    │   └── sender.py                # 打包/非打包发送
+    │   ├── sender.py                # 打包/非打包/文件发送
+    │   └── archive_builder.py       # 解析结果 ZIP 归档
     ├── translation/
     │   ├── manager.py               # 元数据翻译与严格 JSON 结果回填
     │   ├── llm_client.py            # 自定义 OpenAI 兼容 / Ollama 调用
@@ -102,6 +103,8 @@ astrbot_plugin_media_parser/
 `message.packing.thresholds.image_count`、`video_count`、`node_count` 均为非负整数。阈值为 `0` 时表示不按该项触发打包。
 
 `message.text_metadata.quote_user_message` 控制非打包发送时文本元数据节点是否引用对应的用户消息。媒体节点、热评节点、翻译节点和消息集合不引用用户消息。
+
+`message.packing.zip_command` 为空时关闭 ZIP 功能。配置命令后，用户引用含可解析链接的消息并发送精确匹配的命令，`main.py::auto_parse()` 仍按正常流程解析、下载和构建节点，然后由 `archive_builder.py` 将每条链接的文本节点和本地媒体写入同一目录并生成 ZIP。`message.packing.mode` 决定是否为所有链接增加统一的顶层目录；未成功下载的媒体不会伪造文件，而会在对应 `metadata.txt` 中记录链接。
 
 `message.text_metadata.show_title/show_author/show_timestamp/show_original_link/show_description` 分别控制来源元数据字段。开关默认均为 `true`，只改变展示与翻译输入；访问状态、媒体大小、跳过原因和错误提示不受影响。现有 `message.*` 路径保持不变，避免 AstrBot 递归更新 schema 时删除用户旧配置。
 
@@ -272,6 +275,7 @@ video_count .. video_count + image_count   图片
 - 内部先尝试构建富媒体节点，再构建文本节点，这样节点构建失败时可把原因回填到 metadata，文本节点可展示。
 - `build_all_nodes()` 返回 `BuildAllNodesResult(all_link_nodes, link_metadata, temp_files, video_files)`。
 - `summarize_node_counts()` 统计最终可发送的图片、视频和总节点数量，供按条件打包判断使用。
+- `archive_builder.py` 复制 `metadata.file_paths` 中已成功下载的媒体，按链接目录写入 `metadata.txt`，并使用安全化文件名创建临时 ZIP；发送完成后由主流程清理临时目录。
 
 `sender.py` 负责发送，是否进入消息集合由 `main.py` 在节点构建后决定：
 
@@ -345,12 +349,13 @@ build_all_nodes()
   ↓
 summarize_node_counts()
   ↓
-按 message.packing.mode 与条件阈值发送文本元数据、热评和媒体节点
+按 message.packing.mode 与条件阈值选择发送路径
+  ├─ ZIP 命令 -> 等待翻译 -> build_zip_archive() -> send_zip_result()
   ├─ 打包 -> send_packed_results()
   └─ 不打包 -> send_unpacked_results()
        └─ 可按 message.text_metadata.quote_user_message 引用用户消息
   ↓
-等待 translation_task
+普通发送路径等待 translation_task
   ├─ 有翻译节点 -> send_translation_results()
   └─ 无翻译节点 -> 跳过
   ↓

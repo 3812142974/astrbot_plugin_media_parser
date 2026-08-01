@@ -127,19 +127,6 @@
             }
         }
     },
-    "pixiv": {
-        "description": "Pixiv 设置",
-        "type": "object",
-        "hint": "Pixiv 解析需要 Cookie 才能获取原图；无 Cookie 也能解析但可能仅返回缩略图。",
-        "items": {
-            "cookie": {
-                "description": "Pixiv Cookie",
-                "type": "string",
-                "hint": "包含 PHPSESSID 的完整 Cookie 字符串。登录 pixiv.net 后从浏览器开发者工具复制。",
-                "default": ""
-            }
-        }
-    },
     "trigger": {
         "description": "触发设置",
         "type": "object",
@@ -326,6 +313,12 @@
                             "按条件打包"
                         ],
                         "default": "不打包"
+                    },
+                    "zip_command": {
+                        "description": "引用链接打包命令",
+                        "type": "string",
+                        "hint": "引用含可解析链接的消息并单独发送此命令，将解析文本和已下载媒体打包为ZIP；留空关闭。",
+                        "default": ""
                     },
                     "thresholds": {
                         "description": "按条件打包阈值",
@@ -603,6 +596,19 @@
                         "default": 1440
                     }
                 }
+            }
+        }
+    },
+    "pixiv": {
+        "description": "Pixiv 设置",
+        "type": "object",
+        "hint": "Pixiv 解析需要 Cookie 才能获取原图；无 Cookie 也能解析但可能仅返回缩略图。",
+        "items": {
+            "cookie": {
+                "description": "Pixiv Cookie",
+                "type": "string",
+                "hint": "包含 PHPSESSID 的完整 Cookie 字符串。登录 pixiv.net 后从浏览器开发者工具复制。",
+                "default": ""
             }
         }
     },

@@ -9,7 +9,7 @@ _✨ 自动解析流媒体平台链接，转换为媒体直链发送 ✨_
 [![License](https://img.shields.io/badge/License-AGPLv3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0.html)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![AstrBot](https://img.shields.io/badge/AstrBot-Plugin-orange.svg)](https://github.com/AstrBotDevs/AstrBot)
-[![Version](https://img.shields.io/badge/Version-v6.4.0-green.svg)](https://github.com/drdon1234/astrbot_plugin_media_parser)
+[![Version](https://img.shields.io/badge/Version-v6.5.0-green.svg)](https://github.com/drdon1234/astrbot_plugin_media_parser)
 [![GitHub](https://img.shields.io/badge/作者-drdon1234-blue)](https://github.com/drdon1234)
 
 </div>
@@ -101,6 +101,7 @@ _✨ 自动解析流媒体平台链接，转换为媒体直链发送 ✨_
 - ✅ 每个平台可独立选择输出模式：全部发送、仅文本、仅富媒体或关闭
 - ✅ 可选大模型翻译正文和标题，支持 AstrBot 内置 AI 或插件自定义 OpenAI 兼容接口
 - ✅ 支持消息集合打包策略：不打包、全部打包或按条件打包
+- ✅ 可将引用链接的解析文本和已下载媒体打包为 ZIP 文件发送
 - ✅ 可选 B站 Cookie 解锁高画质 + 管理员协助自动续期
 - ✅ 媒体中转模式，跨服务器部署无需共享目录
 
@@ -155,6 +156,8 @@ QQ 普通文本消息没有可移植的“超链接文本”协议，因此插�
 `消息输出 → 富媒体展示 → 视频仅发送封面` 开启后，插件不会发送视频节点，会把每个视频改为图片节点发送：解析结果自带封面时直接使用封面；没有封面时会尝试用 ffmpeg 截取视频第一帧作为封面。无封面截帧依赖缓存目录可用且运行环境存在 ffmpeg。
 
 `消息输出 → 文本元数据 → 引用用户消息` 可在不打包时让文本元数据节点引用对应的用户消息；媒体节点和打包消息不引用。
+
+在 `消息输出 → 发送行为：消息打包 → 引用链接打包命令` 中填写命令后，引用包含可解析链接的消息并单独发送该命令即可生成 ZIP。每条链接的 `metadata.txt` 与对应媒体位于同一目录；启用消息集合打包时，链接目录会统一放在 ZIP 顶层目录下。无法取得本地媒体文件时，文本中会记录未打包的媒体链接。留空可关闭此功能。
 
 `解析频率限制` 默认关闭。可分别设置 `同视频链接限制` 和 `同用户限制` 的 `最多解析次数` 与 `时间窗秒数`；次数为 `0` 表示不限制。链接计数会使用清洗后的标准链接，过滤分享者、来源和追踪参数；短链解析完成后也会记录平台返回的最终链接别名。解析记录会持久化到插件运行时目录，并按已启用限制中的最大时间窗自动裁剪，避免记录无限增长。
 

@@ -207,6 +207,7 @@ class PackingConfig:
     image_threshold: int = 3
     video_threshold: int = 2
     node_threshold: int = 5
+    zip_command: str = ""
 
     def should_pack(
         self,
@@ -510,6 +511,7 @@ class ConfigManager:
                 node_threshold=self._parse_non_negative_int(
                     pack_thresholds.get("node_count", 5), 5
                 ),
+                zip_command=str(packing.get("zip_command", "") or "").strip(),
             ),
             media_display=MediaDisplayConfig(
                 video_cover_only=bool(
