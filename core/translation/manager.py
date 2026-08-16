@@ -1,9 +1,11 @@
 """Translate parsed text metadata through AstrBot or custom LLM providers."""
+
 from __future__ import annotations
 
 import asyncio
 import inspect
 import json
+import math
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -35,9 +37,11 @@ OBVIOUS_TRADITIONAL_CHARS = set(
     "體臺國廣門們風雲網頁與為來這還說對時會個開關啟發無後裡裏"
     "圖標題測試簡複雜點擊獲處訊號視頻頻權檔資"
 )
+OBVIOUS_SIMPLIFIED_CHARS = set(
+    "这们为说对时开关启发无后图标测简复杂击获处讯视频权档资网页风云还个门广"
+)
 SIMPLIFIED_CHINESE = "简体中文"
 TRADITIONAL_CHINESE = "繁体中文"
-CONTENT_SCOPE_BODY_ONLY = "仅正文"
 CONTENT_SCOPE_BODY_AND_TITLE = "正文和标题"
 
 
@@ -57,9 +61,7 @@ class MetadataTranslator:
     ) -> None:
         if not getattr(self.config, "enabled", False):
             return
-        target_language = str(
-            getattr(self.config, "target_language", "") or ""
-        ).strip()
+        target_language = str(getattr(self.config, "target_language", "") or "").strip()
         if not target_language:
             logger.warning("翻译已启用，但未配置目标语言，跳过翻译")
             return
@@ -107,10 +109,7 @@ class MetadataTranslator:
         item_groups: List[List[Dict[str, str]]] = []
         max_chars = max(
             1,
-            int(
-                getattr(self.config, "max_text_chars_per_request", 4000)
-                or 4000
-            ),
+            int(getattr(self.config, "max_text_chars_per_request", 4000) or 4000),
         )
         for meta_idx, metadata in enumerate(metadata_list):
             if metadata.get("error"):
@@ -127,8 +126,8 @@ class MetadataTranslator:
                 or CONTENT_SCOPE_BODY_AND_TITLE
             ).strip()
             if (
-                content_scope == CONTENT_SCOPE_BODY_AND_TITLE and
-                text_metadata_field_enabled(metadata, "title")
+                content_scope == CONTENT_SCOPE_BODY_AND_TITLE
+                and text_metadata_field_enabled(metadata, "title")
             ):
                 self._append_text_item(
                     items,
@@ -175,10 +174,12 @@ class MetadataTranslator:
                 f"field={field} target={target_language}"
             )
             return
-        items.append({
-            "id": f"{meta_idx}:{field}",
-            "text": text,
-        })
+        items.append(
+            {
+                "id": f"{meta_idx}:{field}",
+                "text": text,
+            }
+        )
 
     @classmethod
     def _is_already_target_language(cls, text: str, target_language: str) -> bool:
@@ -199,7 +200,12 @@ class MetadataTranslator:
             return False
         if any(ch in OBVIOUS_TRADITIONAL_CHARS for ch in text):
             return False
-        return True
+        # Han-only text is not enough evidence: modern Japanese names and
+        # titles such as “東京大学” may contain no kana at all. Be conservative
+        # and let the LLM make the final decision unless the text contains a
+        # strong simplified-only form. Shared shinjitai such as 国/会/体 are
+        # deliberately not treated as Simplified Chinese evidence.
+        return any(ch in OBVIOUS_SIMPLIFIED_CHARS for ch in text)
 
     @classmethod
     def _is_traditional_chinese_text(cls, text: str) -> bool:
@@ -228,10 +234,7 @@ class MetadataTranslator:
 
     @classmethod
     def _has_non_chinese_letters(cls, text: str) -> bool:
-        return any(
-            ch.isalpha() and not cls._is_cjk_char(ch)
-            for ch in text
-        )
+        return any(ch.isalpha() and not cls._is_cjk_char(ch) for ch in text)
 
     async def _translate_batch(
         self,
@@ -241,14 +244,23 @@ class MetadataTranslator:
         event_context: Dict[str, Any],
     ) -> Dict[str, str]:
         payload = self._build_payload(items, target_language)
+        try:
+            timeout_seconds = float(
+                getattr(self.config, "request_timeout_seconds", 60) or 60
+            )
+            if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+                raise ValueError("翻译超时必须为有限正数")
+        except (TypeError, ValueError):
+            timeout_seconds = 60.0
         if self._use_astrbot_provider():
-            text = await self._post_astrbot_completion(payload, event_context)
+            text = await asyncio.wait_for(
+                self._post_astrbot_completion(payload, event_context),
+                timeout=timeout_seconds,
+            )
         else:
             text = await self.llm_client.complete(
                 payload,
-                timeout_seconds=int(
-                    getattr(self.config, "request_timeout_seconds", 60) or 60
-                ),
+                timeout_seconds=max(1, int(timeout_seconds)),
             )
         return self._parse_translation_response(text, {item["id"] for item in items})
 
@@ -326,7 +338,7 @@ class MetadataTranslator:
             end = raw.rfind("}")
             if start < 0 or end <= start:
                 raise
-            data = json.loads(raw[start:end + 1])
+            data = json.loads(raw[start : end + 1])
         if not isinstance(data, dict):
             raise RuntimeError("LLM 翻译响应不是 JSON 对象")
         return data
@@ -338,9 +350,7 @@ class MetadataTranslator:
         target_language: Optional[str] = None,
     ) -> None:
         language = str(
-            target_language
-            or getattr(self.config, "target_language", "")
-            or ""
+            target_language or getattr(self.config, "target_language", "") or ""
         ).strip()
         for item_id, translated in translations.items():
             meta_idx, field = self._split_item_id(item_id)
