@@ -41,8 +41,8 @@ from .core.interaction.platform.bilibili import BilibiliAdminCookieAssistManager
 
 # 官方指令词（由 AstrBot 命令系统接管，不会转交 LLM）。
 # 任何以这些词作为完整消息的内容都不应再进入解析流程。
-ADMIN_BILI_LOGIN_CMD = "bili登录"
-ADMIN_BILI_LOGIN_ALIASES = ("b站登录", "B站登录", "bili_cookie")
+ADMIN_BILI_LOGIN_CMD = "bilibili登录"
+ADMIN_BILI_LOGIN_ALIASES = ("bili登录", "b站登录", "B站登录", "bilibili_cookie")
 ADMIN_CLEAN_CACHE_CMD = "清理媒体"
 _ADMIN_COMMAND_WORDS = frozenset(
     (ADMIN_BILI_LOGIN_CMD, *ADMIN_BILI_LOGIN_ALIASES, ADMIN_CLEAN_CACHE_CMD)

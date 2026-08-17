@@ -159,7 +159,7 @@ cache/runtime_manager/bilibili/cookie.json
 - `DownloadConfig`：大小限制、缓存目录、缓存可用性、下载并发。
 - `ParseRateLimitConfig`：同链接/同用户解析频率限制、时间窗和持久化记录文件。
 - `ProxyConfig`：全局代理、TikTok、小黑盒、Twitter/X、Pixiv 代理开关。
-- `BilibiliEnhancedConfig`：Cookie、最高画质、运行时文件、管理员协助登录（通过官方指令 `bili登录` 触发）。
+- `BilibiliEnhancedConfig`：Cookie、最高画质、运行时文件、管理员协助登录（通过官方指令 `bilibili登录` 触发）。
 - `PixivConfig`：Pixiv Web Ajax API 使用的可选 Cookie。
 - `MediaRelayConfig`：文件 Token 中转开关、回调地址、TTL。
 - `TranslationConfig`：翻译开关、翻译范围、目标语言、AstrBot 内置或自定义大模型配置。输入/输出上限固定为 4000，超时固定为 60 秒，随机性固定为 0。
@@ -198,9 +198,9 @@ cache/runtime_manager/bilibili/cookie.json
 `BilibiliAdminCookieAssistManager` 是插件运行时的非阻塞协助流程：
 
 - 只有管理员私聊过机器人后，才有可主动发送的私聊会话标识。
-- 当 B站解析器消费到 Cookie 不可用请求后，后台向管理员私聊发送提示，告知可用指令 `bili登录`。
-- 管理员在私聊中发送官方指令 `bili登录`（别名 `b站登录` / `bili_cookie`）后，插件发送登录链接和本地二维码，并在受管理任务中轮询登录结果；扫码会主动超时并清理状态。该指令由 AstrBot 原生命令系统接管，不会转交 LLM。
-- 管理员私聊发送 `bili登录` 会绕过自动请求冷却，直接进入二维码登录；同一时间只允许一轮扫码登录。
+- 当 B站解析器消费到 Cookie 不可用请求后，后台向管理员私聊发送提示，告知可用指令 `bilibili登录`。
+- 管理员在私聊中发送官方指令 `bilibili登录`（别名 `bili登录` / `b站登录` / `bilibili_cookie`）后，插件同时发送登录链接和本地二维码，并在受管理任务中轮询登录结果；扫码会主动超时并清理状态。该指令由 AstrBot 原生命令系统接管，不会转交 LLM。
+- 管理员私聊发送 `bilibili登录` 会绕过自动请求冷却，直接进入登录；同一时间只允许一轮登录。
 - Notice、Request 等非用户消息事件不会更新私聊会话或消费待确认状态。
 - 管理员发送可解析链接时会优先进入解析流程，不会被纯文本协助回复处理抢走。
 
@@ -316,7 +316,7 @@ ParserManager.extract_all_links()
   ├─ 当前消息有链接 -> 进入触发判断
   └─ 当前消息无链接
       ├─ reply_trigger=true 且当前消息含关键词 -> 从 Reply.message_str / Reply.chain 卡片提链
-      └─ 仍无链接 -> 返回（协助登录由官方指令 bili登录 触发，不在此处消费）
+      └─ 仍无链接 -> 返回（协助登录由官方指令 bilibili登录 触发，不在此处消费）
   ↓
 按 parsers 输出模式过滤无输出链接
   ↓

@@ -19,7 +19,7 @@ from ...base import AdminAssistManager
 class BilibiliAdminCookieAssistManager(AdminAssistManager):
     """B站Cookie管理员协助登录状态机（插件侧后台触发，不阻塞解析链）。
 
-    管理员通过官方指令（默认 ``bili登录``）主动发起扫码登录；
+    管理员通过官方指令（默认 ``bilibili登录``）主动发起扫码登录；
     Cookie 失效时插件也会私聊通知管理员发送该指令。指令由 AstrBot
     原生命令系统接管，不会再被转交给 LLM。
     """
@@ -119,7 +119,7 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
             await self._send_private_text(
                 unified_msg_origin,
                 "检测到B站Cookie不可用，是否协助登录？\n"
-                "请直接发送指令 bili登录 发起扫码登录，其他任何消息均无需处理。\n"
+                "请直接发送指令 bilibili登录 发起扫码登录，其他任何消息均无需处理。\n"
                 f"本次原因: {reason_text}",
             )
         except Exception:
@@ -153,15 +153,15 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
     async def _send_local_login_qr(
         self, event: AstrMessageEvent, login_url: str
     ) -> None:
-        """Send a locally rendered QR image and always remove its temp file."""
+        """Send a locally rendered QR image plus an independent login link.
+
+        The login link is sent as its own message so it is never dropped when a
+        platform renders a mixed image+text chain by discarding the text part.
+        """
         qr_path = await asyncio.to_thread(self._create_local_qr_code, login_url)
         try:
             chain = [
-                Plain(
-                    "请使用哔哩哔哩客户端扫描下方二维码完成登录。\n"
-                    "若当前平台无法显示图片，也可在管理员设备打开：\n"
-                    f"{login_url}"
-                ),
+                Plain("请使用哔哩哔哩客户端扫描下方二维码完成登录："),
                 Image.fromFileSystem(qr_path),
             ]
             await event.send(event.chain_result(chain))
@@ -170,15 +170,6 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
                 "[bilibili] 发送本地登录二维码失败，回退为登录链接: "
                 f"{type(image_error).__name__}"
             )
-            try:
-                await event.send(
-                    event.plain_result(
-                        "当前平台无法发送B站登录二维码，请在管理员设备打开：\n"
-                        f"{login_url}"
-                    )
-                )
-            except Exception as fallback_error:
-                raise fallback_error from image_error
         finally:
             try:
                 os.remove(qr_path)
@@ -186,6 +177,17 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
                 pass
             except OSError as exc:
                 logger.warning(f"[bilibili] 清理临时登录二维码失败: {exc}")
+
+        # 独立的链接登录消息，保证一定可见（二维码与链接二选一即可）。
+        try:
+            await event.send(
+                event.plain_result(
+                    "或直接点击链接登录（在浏览器/客户端打开后授权即可）：\n"
+                    f"{login_url}"
+                )
+            )
+        except Exception as link_error:
+            logger.warning(f"[bilibili] 发送登录链接失败: {type(link_error).__name__}")
 
     async def _poll_login_and_notify(
         self, auth_runtime: Any, qrcode_key: str, unified_msg_origin: str
