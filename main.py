@@ -7,6 +7,7 @@ import aiohttp
 from .core.logger import logger
 
 from astrbot.api.event import filter, AstrMessageEvent
+from astrbot.api.event.filter import PermissionType
 from astrbot.api.message_components import Reply
 from astrbot.api.star import Context, Star, register
 from astrbot.core.star.filter.event_message_type import EventMessageType
@@ -931,18 +932,18 @@ class VideoParserPlugin(Star):
 
     # ── 官方指令（AstrBot 命令系统接管，不会转交 LLM） ──────
 
-    @filter.command(ADMIN_BILI_LOGIN_CMD, alias=set(ADMIN_BILI_LOGIN_ALIASES))
+    @filter.command(
+        ADMIN_BILI_LOGIN_CMD,
+        alias=set(ADMIN_BILI_LOGIN_ALIASES),
+        permission_type=PermissionType.ADMIN,
+    )
     async def cmd_bili_admin_login(self, event: AstrMessageEvent):
         """管理员私聊发起 B 站协助扫码登录。"""
         cfg = self.config_manager
-        sender_id = str(event.get_sender_id() or "").strip()
         if not event.is_private_chat():
             await event.send(
                 event.plain_result("该指令仅支持与管理员的私聊中使用。")
             )
-            return
-        if not cfg.permission.admin_id or sender_id != cfg.permission.admin_id:
-            await event.send(event.plain_result("权限不足，仅管理员可用。"))
             return
 
         self.admin_cookie_assist.try_update_admin_origin(event)
@@ -956,18 +957,13 @@ class VideoParserPlugin(Star):
             event, self.bilibili_auth_runtime
         )
 
-    @filter.command(ADMIN_CLEAN_CACHE_CMD)
+    @filter.command(ADMIN_CLEAN_CACHE_CMD, permission_type=PermissionType.ADMIN)
     async def cmd_clean_cache(self, event: AstrMessageEvent):
         """管理员私聊清理媒体缓存。"""
-        cfg = self.config_manager
-        sender_id = str(event.get_sender_id() or "").strip()
         if not event.is_private_chat():
             await event.send(
                 event.plain_result("该指令仅支持与管理员的私聊中使用。")
             )
-            return
-        if not cfg.permission.admin_id or sender_id != cfg.permission.admin_id:
-            await event.send(event.plain_result("权限不足，仅管理员可用。"))
             return
 
         await self._handle_clean_cache(event)
