@@ -75,6 +75,7 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
             await self._send_local_login_qr(event, payload["login_url"])
             self._new_task(
                 self._poll_login_and_notify(
+                    event=event,
                     auth_runtime=auth_runtime,
                     qrcode_key=payload["qrcode_key"],
                     unified_msg_origin=event.unified_msg_origin,
@@ -190,9 +191,30 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
             logger.warning(f"[bilibili] 发送登录链接失败: {type(link_error).__name__}")
 
     async def _poll_login_and_notify(
-        self, auth_runtime: Any, qrcode_key: str, unified_msg_origin: str
+        self,
+        event: AstrMessageEvent,
+        auth_runtime: Any,
+        qrcode_key: str,
+        unified_msg_origin: str,
     ) -> None:
-        """异步轮询登录状态并向管理员反馈结果。"""
+        """异步轮询登录状态并向管理员反馈结果。
+
+        通过 ``event.send`` 上报「已扫码待确认」进度（与二维码同通道，保证可见），
+        登录成功/失败仍走原提示逻辑。
+        """
+        scanned_notified = False
+
+        async def _on_progress(state: str) -> None:
+            nonlocal scanned_notified
+            if state == "scanned" and not scanned_notified:
+                scanned_notified = True
+                try:
+                    await event.send(
+                        event.plain_result("已检测到扫码，请在手机/B站客户端确认登录。")
+                    )
+                except Exception as exc:
+                    logger.warning(f"[bilibili] 发送已扫码提示失败: {type(exc).__name__}")
+
         try:
             timeout = aiohttp.ClientTimeout(total=10)
             try:
@@ -203,6 +225,7 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
                         timeout_seconds=min(
                             self.reply_timeout_seconds, self.QR_CODE_TTL_SECONDS
                         ),
+                        on_progress=_on_progress,
                     )
             except Exception as exc:
                 logger.warning(

@@ -422,18 +422,27 @@ class BilibiliAuthRuntime:
         self._configured_cookie = (cookie_header or "").strip()
 
     async def poll_login_until_complete(
-        self, session: aiohttp.ClientSession, qrcode_key: str, timeout_seconds: int
+        self,
+        session: aiohttp.ClientSession,
+        qrcode_key: str,
+        timeout_seconds: int,
+        on_progress: Any = None,
     ) -> Dict[str, Any]:
-        """轮询登录状态直到完成或超时。"""
+        """轮询登录状态直到完成或超时（每 5 秒查询一次）。
+
+        ``on_progress`` 为可选回调，当二维码被扫描（但尚未在手机端确认）时会被
+        调用一次，参数为 ``"scanned"``，便于上层及时提示管理员「已扫码待确认」。
+        """
         deadline = time.monotonic() + max(1, timeout_seconds)
         headers = {
             "User-Agent": UA,
             "Referer": "https://www.bilibili.com",
             "Origin": "https://www.bilibili.com",
         }
+        scanned_notified = False
 
         while time.monotonic() < deadline:
-            await asyncio.sleep(2)
+            await asyncio.sleep(5)
             async with session.get(
                 self.QRCODE_POLL_URL,
                 params={"qrcode_key": qrcode_key},
@@ -450,6 +459,19 @@ class BilibiliAuthRuntime:
                     return {"status": "success"}
                 if code == 86038:
                     return {"status": "expired"}
+                # 86090：已扫码，等待手机端确认；86101：尚未扫码。
+                # 仅在首次检测到「已扫码」时上报一次进度。
+                if code == 86090 and not scanned_notified:
+                    scanned_notified = True
+                    if callable(on_progress):
+                        try:
+                            ret = on_progress("scanned")
+                            if asyncio.iscoroutine(ret):
+                                await ret
+                        except Exception as exc:
+                            logger.warning(
+                                f"[bilibili] 登录进度回调执行失败: {type(exc).__name__}"
+                            )
                 if code in (86090, 86101):
                     continue
 
