@@ -36,11 +36,14 @@ class BilibiliAuthRuntime:
         enabled: bool,
         configured_cookie: str = "",
         credential_path: str = "",
+        on_credentials_persisted: Any = None,
     ):
         """初始化鉴权运行时并准备凭据缓存状态。"""
         self.enabled = enabled
         self._configured_cookie = (configured_cookie or "").strip()
         self.credential_path = credential_path
+        # 扫码登录成功后，把完整 Cookie 请求头持久化到外部（如配置文件）的回调。
+        self._on_credentials_persisted: Any = on_credentials_persisted
 
         self._runtime_credentials: Dict[str, Any] = {}
         self._runtime_cookie_header: str = ""
@@ -396,6 +399,27 @@ class BilibiliAuthRuntime:
             self._clear_cookie_unavailable_state()
             self._reset_validation_cache()
             await asyncio.to_thread(self._save_credentials)
+            callback = self._on_credentials_persisted
+            if callable(callback):
+                try:
+                    await asyncio.to_thread(callback, self._runtime_cookie_header)
+                except Exception as exc:
+                    logger.warning(
+                        "[bilibili] 扫码登录后持久化回调执行失败: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+
+    def set_persist_callback(self, callback: Any) -> None:
+        """设置扫码登录成功后持久化 Cookie 的回调（用于写回配置文件等）。"""
+        self._on_credentials_persisted = callback
+
+    def set_configured_cookie(self, cookie_header: str) -> None:
+        """更新手动配置（配置文件）Cookie 的兜底来源。
+
+        扫码/外部同步完成后调用，使运行时 ``configured`` 来源与刚登录的
+        Cookie 保持一致，作为 ``cookie.json`` 之外的另一层兜底。
+        """
+        self._configured_cookie = (cookie_header or "").strip()
 
     async def poll_login_until_complete(
         self, session: aiohttp.ClientSession, qrcode_key: str, timeout_seconds: int

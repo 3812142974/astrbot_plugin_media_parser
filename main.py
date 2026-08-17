@@ -62,6 +62,8 @@ class VideoParserPlugin(Star):
 
         self.config_manager = ConfigManager(config)
         cfg = self.config_manager
+        # 保留 AstrBot 传入的原始配置对象（含 save_config），用于扫码后写回 Cookie。
+        self._raw_config = config
 
         parsers = cfg.create_parsers()
         self.parser_manager = ParserManager(parsers)
@@ -73,6 +75,10 @@ class VideoParserPlugin(Star):
         self.bilibili_auth_runtime = (
             self.bilibili_parser.get_auth_runtime() if self.bilibili_parser else None
         )
+        if self.bilibili_auth_runtime is not None:
+            self.bilibili_auth_runtime.set_persist_callback(
+                self._persist_bilibili_cookie_to_config
+            )
 
         self.download_manager = DownloadManager(
             max_video_size_mb=cfg.download.max_video_size_mb,
@@ -122,6 +128,29 @@ class VideoParserPlugin(Star):
         if not reason:
             return
         self.admin_cookie_assist.trigger_assist_request(reason)
+
+    def _persist_bilibili_cookie_to_config(self, cookie_header: str) -> None:
+        """扫码登录成功后把 Cookie 写回 AstrBot 配置文件（bilibili_enhanced.cookie）。
+
+        作为运行时 ``cookie.json`` 之外的第二层落地：用户在面板也能看到并核对，
+        且插件重启后配置项立即可用；同时同步运行时的 ``configured`` 兜底来源。
+        """
+        if not cookie_header:
+            return
+        raw = self._raw_config
+        bili = raw.get("bilibili_enhanced") if isinstance(raw, dict) else None
+        if not isinstance(bili, dict):
+            bili = {}
+            raw["bilibili_enhanced"] = bili
+        bili["cookie"] = cookie_header
+        save_config = getattr(raw, "save_config", None)
+        if callable(save_config):
+            try:
+                save_config()
+            except Exception as exc:
+                logger.warning(f"[bilibili] 写回 Cookie 到配置文件失败: {exc}")
+        if self.bilibili_auth_runtime is not None:
+            self.bilibili_auth_runtime.set_configured_cookie(cookie_header)
 
     async def _delayed_cleanup(self, files, delay: int):
         try:

@@ -216,7 +216,8 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
             status = result.get("status")
             if status == "success":
                 await self._send_private_text(
-                    unified_msg_origin, "B站扫码登录成功，Cookie已更新。"
+                    unified_msg_origin,
+                    "B站扫码登录成功，Cookie已更新，并已写入配置文件（含运行时缓存）。",
                 )
                 return
 
