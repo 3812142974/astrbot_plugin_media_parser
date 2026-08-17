@@ -30,9 +30,9 @@ class AdminAssistManager(ABC):
         self.request_cooldown_seconds = max(1, int(request_cooldown_minutes) * 60)
 
         self._admin_private_origin: Optional[str] = None
-        self._waiting_confirm = False
-        self._confirm_deadline = 0.0
-        self._last_request_at = 0.0
+        # 用负无穷表示“从未请求过”，避免以 0.0 初始化时
+        # 在冷却阈值（默认 1440 分钟）大于进程运行时间时错误地拦截首次请求。
+        self._last_request_at = -float("inf")
 
         self._lock = asyncio.Lock()
         self._tasks: Set[asyncio.Task] = set()
@@ -115,13 +115,6 @@ class AdminAssistManager(ABC):
             await self.context.send_message(unified_msg_origin, text)
         except Exception as exc:
             raise exc from first_error
-
-    @abstractmethod
-    async def handle_admin_reply(
-        self, event: AstrMessageEvent, *args: Any, **kwargs: Any
-    ) -> bool:
-        """处理管理员回复消息。"""
-        raise NotImplementedError
 
     @abstractmethod
     def trigger_assist_request(self, reason: str) -> None:

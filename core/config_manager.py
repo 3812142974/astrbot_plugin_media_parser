@@ -390,7 +390,6 @@ class BilibiliEnhancedConfig:
     enable_admin_assist: bool = False
     admin_reply_timeout_minutes: int = 1440
     admin_request_cooldown_minutes: int = 1440
-    admin_cookie_update_command: str = "B站更新Cookie"
 
 
 @dataclass
@@ -424,7 +423,6 @@ class TranslationConfig:
 
 @dataclass
 class AdminConfig:
-    clean_cache_keyword: str = "清理媒体"
     debug_mode: bool = False
 
 
@@ -847,16 +845,12 @@ class ConfigManager:
             admin_request_cooldown = self._parse_positive_int(
                 admin_assist_raw.get("request_cooldown_minutes", 1440), 1440
             )
-            admin_cookie_update_command = str(
-                admin_assist_raw.get("command", "B站更新Cookie") or ""
-            ).strip()
         else:
             cookie = ""
             max_quality = 0
             enable_admin_assist = False
             admin_reply_timeout = 1440
             admin_request_cooldown = 1440
-            admin_cookie_update_command = "B站更新Cookie"
 
         cookie_feature_requested = use_cookie
         cookie_runtime_enabled = bool(use_cookie and cache_dir_available)
@@ -888,7 +882,6 @@ class ConfigManager:
             enable_admin_assist=enable_admin_assist,
             admin_reply_timeout_minutes=admin_reply_timeout,
             admin_request_cooldown_minutes=admin_request_cooldown,
-            admin_cookie_update_command=admin_cookie_update_command,
         )
 
         # --- pixiv ---
@@ -939,9 +932,6 @@ class ConfigManager:
         # --- admin ---
         admin_raw = self._as_dict(config.get("admin"))
         self.admin = AdminConfig(
-            clean_cache_keyword=str(
-                admin_raw.get("clean_cache_keyword", "清理媒体") or "清理媒体"
-            ).strip(),
             debug_mode=self._parse_bool(
                 admin_raw.get("debug", False),
                 False,
@@ -954,12 +944,14 @@ class ConfigManager:
         if self.admin.debug_mode:
             logger.debug("Debug模式已启用")
 
+        # 引用链接归档命令与清理缓存官方指令冲突时，禁用归档命令。
+        clean_cache_cmd = "清理媒体"
         if (
             self.message.archive.command
-            and self.message.archive.command == self.admin.clean_cache_keyword
+            and self.message.archive.command == clean_cache_cmd
         ):
             logger.warning(
-                "引用链接归档命令与清缓存命令冲突，已禁用归档命令；请配置两个不同命令"
+                "引用链接归档命令与清缓存指令冲突，已禁用归档命令；请配置两个不同的命令"
             )
             self.message.archive.command = ""
 

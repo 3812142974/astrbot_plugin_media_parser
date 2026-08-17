@@ -684,20 +684,11 @@
                     "request_cooldown_minutes": {
                         "description": "请求冷却（分钟）",
                         "type": "int",
-                        "hint": "自动检测再次发起协助登录前的间隔，必须大于 0；管理员主动更新指令不受此冷却限制。",
+                        "hint": "自动检测再次发起协助登录前的间隔，必须大于 0。",
                         "condition": {
                             "enable": true
                         },
                         "default": 1440
-                    },
-                    "command": {
-                        "description": "主动更新 Cookie 指令",
-                        "type": "string",
-                        "hint": "管理员私聊发送此指令即可直接发送 B 站登录二维码；留空可关闭指令入口。",
-                        "condition": {
-                            "enable": true
-                        },
-                        "default": "B站更新Cookie"
                     }
                 }
             }
@@ -804,12 +795,6 @@
         "description": "管理与调试",
         "type": "object",
         "items": {
-            "clean_cache_keyword": {
-                "description": "清理缓存关键词",
-                "type": "string",
-                "hint": "管理员发送此关键词清除所有媒体缓存",
-                "default": "清理媒体"
-            },
             "debug": {
                 "description": "调试模式",
                 "type": "bool",

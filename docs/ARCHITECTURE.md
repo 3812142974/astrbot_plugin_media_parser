@@ -89,7 +89,7 @@ astrbot_plugin_media_parser/
 - `全部发送`：发送文本元数据节点和图片/视频节点。
 - `仅文本`：解析并发送文本元数据，不进入下载处理、文件 Token 注册和富媒体节点构建。
 - `仅富媒体`：解析并发送图片/视频，不构建文本节点；热评条数会对该平台归零。
-- 所有平台均为 `关闭` 时：普通消息不进入解析，但管理员清缓存命令仍在停用检查之前处理。
+- 所有平台均为 `关闭` 时：普通消息不进入解析，但管理员清缓存指令 `清理媒体` 仍在停用检查之前处理。
 - 开场语只在富媒体流程中触发，且只有出现可发送媒体时才发送；如果已发送开场语但最终没有节点，会补发空结果说明。
 
 #### 消息聚合与 ZIP 归档
@@ -146,7 +146,7 @@ cache/runtime_manager/bilibili/cookie.json
 - 协调解析限流、解析、下载、文件 Token 注册、节点构建、发送与清理。
 - 在 `terminate()` 中关闭周期清理、延迟清理、管理员交互和下载任务；仍处于 Token TTL 内的已标记文件由下次加载后的过期扫描回收。
 
-管理员私聊发送 `admin.clean_cache_keyword`，且发送者为 `permissions.admin_id` 时，会触发 `cleanup_marked_in(cache_dir)` 主动清理媒体缓存。
+管理员在私聊中发送官方指令 `清理媒体`，且发送者为 `permissions.admin_id` 时，会触发 `cleanup_marked_in(cache_dir)` 主动清理媒体缓存。
 
 ### 2.2 配置管理 `core/config_manager.py`
 
@@ -159,11 +159,11 @@ cache/runtime_manager/bilibili/cookie.json
 - `DownloadConfig`：大小限制、缓存目录、缓存可用性、下载并发。
 - `ParseRateLimitConfig`：同链接/同用户解析频率限制、时间窗和持久化记录文件。
 - `ProxyConfig`：全局代理、TikTok、小黑盒、Twitter/X、Pixiv 代理开关。
-- `BilibiliEnhancedConfig`：Cookie、最高画质、运行时文件、管理员协助登录与主动更新指令。
+- `BilibiliEnhancedConfig`：Cookie、最高画质、运行时文件、管理员协助登录（通过官方指令 `bili登录` 触发）。
 - `PixivConfig`：Pixiv Web Ajax API 使用的可选 Cookie。
 - `MediaRelayConfig`：文件 Token 中转开关、回调地址、TTL。
 - `TranslationConfig`：翻译开关、翻译范围、目标语言、AstrBot 内置或自定义大模型配置。输入/输出上限固定为 4000，超时固定为 60 秒，随机性固定为 0。
-- `AdminConfig`：清理关键词和 debug 模式。
+- `AdminConfig`：debug 模式。清理缓存改用官方指令 `清理媒体`。
 
 `ConfigManager` 会将 `parsers` 的输出模式归一到 `ParserOutputConfig.modes`。使用 `关闭`、`全部发送`、`仅文本`、`仅富媒体` 四种字符串模式。缺省平台使用 `全部发送`；显式无效值会安全关闭并记录警告。`message.packing.mode` 会被归一为 `不聚合`、`全部聚合`、`按条件聚合`；条件阈值按非负整数兜底。旧模式值和旧 ZIP 命令会在 schema 仍保留这些字段时迁移，避免 AstrBot 完整性检查提前删除用户配置。
 
@@ -198,9 +198,9 @@ cache/runtime_manager/bilibili/cookie.json
 `BilibiliAdminCookieAssistManager` 是插件运行时的非阻塞协助流程：
 
 - 只有管理员私聊过机器人后，才有可主动发送的私聊会话标识。
-- 当 B站解析器消费到 Cookie 不可用请求后，后台向管理员发送确认消息。
-- 管理员回复 `确定` 后发送登录链接和本地二维码，并在受管理任务中轮询登录结果；等待确认和扫码均会主动超时并清理状态。
-- 管理员私聊发送配置的主动更新指令（默认 `B站更新Cookie`）会绕过自动请求冷却，直接进入二维码登录；同一时间只允许一轮扫码登录。
+- 当 B站解析器消费到 Cookie 不可用请求后，后台向管理员私聊发送提示，告知可用指令 `bili登录`。
+- 管理员在私聊中发送官方指令 `bili登录`（别名 `b站登录` / `bili_cookie`）后，插件发送登录链接和本地二维码，并在受管理任务中轮询登录结果；扫码会主动超时并清理状态。该指令由 AstrBot 原生命令系统接管，不会转交 LLM。
+- 管理员私聊发送 `bili登录` 会绕过自动请求冷却，直接进入二维码登录；同一时间只允许一轮扫码登录。
 - Notice、Request 等非用户消息事件不会更新私聊会话或消费待确认状态。
 - 管理员发送可解析链接时会优先进入解析流程，不会被纯文本协助回复处理抢走。
 
@@ -316,7 +316,7 @@ ParserManager.extract_all_links()
   ├─ 当前消息有链接 -> 进入触发判断
   └─ 当前消息无链接
       ├─ reply_trigger=true 且当前消息含关键词 -> 从 Reply.message_str / Reply.chain 卡片提链
-      └─ 仍无链接 -> admin_cookie_assist.handle_admin_reply() -> 返回
+      └─ 仍无链接 -> 返回（协助登录由官方指令 bili登录 触发，不在此处消费）
   ↓
 按 parsers 输出模式过滤无输出链接
   ↓

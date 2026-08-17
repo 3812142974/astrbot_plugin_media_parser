@@ -39,6 +39,15 @@ from .core.translation import MetadataTranslator
 from .core.config_manager import ConfigManager
 from .core.interaction.platform.bilibili import BilibiliAdminCookieAssistManager
 
+# 官方指令词（由 AstrBot 命令系统接管，不会转交 LLM）。
+# 任何以这些词作为完整消息的内容都不应再进入解析流程。
+ADMIN_BILI_LOGIN_CMD = "bili登录"
+ADMIN_BILI_LOGIN_ALIASES = ("b站登录", "B站登录", "bili_cookie")
+ADMIN_CLEAN_CACHE_CMD = "清理媒体"
+_ADMIN_COMMAND_WORDS = frozenset(
+    (ADMIN_BILI_LOGIN_CMD, *ADMIN_BILI_LOGIN_ALIASES, ADMIN_CLEAN_CACHE_CMD)
+)
+
 
 @register(
     "astrbot_plugin_media_parser",
@@ -95,7 +104,6 @@ class VideoParserPlugin(Star):
             ),
             reply_timeout_minutes=cfg.bilibili.admin_reply_timeout_minutes,
             request_cooldown_minutes=cfg.bilibili.admin_request_cooldown_minutes,
-            command=cfg.bilibili.admin_cookie_update_command,
         )
         self._start_expired_cache_cleanup()
 
@@ -751,19 +759,8 @@ class VideoParserPlugin(Star):
             getattr(event.message_obj, "message_id", "") or ""
         ).strip()
 
-        clean_kw = cfg.admin.clean_cache_keyword
-        if clean_kw and original_message_text.strip() == clean_kw:
-            if (
-                is_private
-                and cfg.permission.admin_id
-                and str(sender_id or "").strip() == cfg.permission.admin_id
-            ):
-                await self._handle_clean_cache(event)
-            return
-
-        if await self.admin_cookie_assist.handle_admin_command(
-            event, self.bilibili_auth_runtime
-        ):
+        # 官方指令由 AstrBot 命令系统接管，此处直接跳过，避免重复解析。
+        if original_message_text.strip() in _ADMIN_COMMAND_WORDS:
             return
 
         if not cfg.parser_output.has_any_output():
@@ -814,9 +811,6 @@ class VideoParserPlugin(Star):
                             f"通过回复触发解析，提取到 {len(links_with_parser)} 个链接"
                         )
                 if not links_with_parser:
-                    await self.admin_cookie_assist.handle_admin_reply(
-                        event, self.bilibili_auth_runtime
-                    )
                     return
 
         if not zip_requested and not cfg.trigger.should_parse(original_message_text):
@@ -934,3 +928,46 @@ class VideoParserPlugin(Star):
                 )
             finally:
                 await self._cancel_translation_task(translation_task)
+
+    # ── 官方指令（AstrBot 命令系统接管，不会转交 LLM） ──────
+
+    @filter.command(ADMIN_BILI_LOGIN_CMD, alias=set(ADMIN_BILI_LOGIN_ALIASES))
+    async def cmd_bili_admin_login(self, event: AstrMessageEvent):
+        """管理员私聊发起 B 站协助扫码登录。"""
+        cfg = self.config_manager
+        sender_id = str(event.get_sender_id() or "").strip()
+        if not event.is_private_chat():
+            await event.send(
+                event.plain_result("该指令仅支持与管理员的私聊中使用。")
+            )
+            return
+        if not cfg.permission.admin_id or sender_id != cfg.permission.admin_id:
+            await event.send(event.plain_result("权限不足，仅管理员可用。"))
+            return
+
+        self.admin_cookie_assist.try_update_admin_origin(event)
+        if not self.admin_cookie_assist.enabled:
+            await event.send(
+                event.plain_result("B站管理员协助登录未启用，请先开启相关配置。")
+            )
+            return
+
+        await self.admin_cookie_assist.start_login_flow(
+            event, self.bilibili_auth_runtime
+        )
+
+    @filter.command(ADMIN_CLEAN_CACHE_CMD)
+    async def cmd_clean_cache(self, event: AstrMessageEvent):
+        """管理员私聊清理媒体缓存。"""
+        cfg = self.config_manager
+        sender_id = str(event.get_sender_id() or "").strip()
+        if not event.is_private_chat():
+            await event.send(
+                event.plain_result("该指令仅支持与管理员的私聊中使用。")
+            )
+            return
+        if not cfg.permission.admin_id or sender_id != cfg.permission.admin_id:
+            await event.send(event.plain_result("权限不足，仅管理员可用。"))
+            return
+
+        await self._handle_clean_cache(event)

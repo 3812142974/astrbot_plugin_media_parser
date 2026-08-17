@@ -17,7 +17,12 @@ from ...base import AdminAssistManager
 
 
 class BilibiliAdminCookieAssistManager(AdminAssistManager):
-    """B站Cookie管理员协助登录状态机（插件侧后台触发，不阻塞解析链）。"""
+    """B站Cookie管理员协助登录状态机（插件侧后台触发，不阻塞解析链）。
+
+    管理员通过官方指令（默认 ``bili登录``）主动发起扫码登录；
+    Cookie 失效时插件也会私聊通知管理员发送该指令。指令由 AstrBot
+    原生命令系统接管，不会再被转交给 LLM。
+    """
 
     QR_CODE_TTL_SECONDS = 180
 
@@ -28,7 +33,6 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
         enabled: bool,
         reply_timeout_minutes: int,
         request_cooldown_minutes: int,
-        command: str = "B站更新Cookie",
     ):
         """初始化 B 站 Cookie 辅助管理器。"""
         super().__init__(
@@ -38,92 +42,21 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
             reply_timeout_minutes=reply_timeout_minutes,
             request_cooldown_minutes=request_cooldown_minutes,
         )
-        self._confirm_timeout_task: Optional[asyncio.Task] = None
-        self.command = str(command or "").strip()
         self._login_in_progress = False
 
-    async def handle_admin_reply(
+    async def start_login_flow(
         self, event: AstrMessageEvent, auth_runtime: Optional[Any]
     ) -> bool:
-        """处理管理员私聊回复。
+        """生成二维码并启动一次扫码轮询。
 
         Returns:
-            bool: 是否命中并消费了协助会话回复。
+            bool: 是否成功发起扫码登录。
         """
-        if not self._is_admin_private_event(event):
-            return False
-        if not self._is_user_message_event(event):
-            return False
-
-        self._admin_private_origin = event.unified_msg_origin
-        if not self.enabled:
-            return False
-
-        async with self._lock:
-            if not self._waiting_confirm:
-                return False
-
-            now = time.monotonic()
-            if now > self._confirm_deadline:
-                self._clear_confirmation_locked()
-                expired = True
-                message_text = ""
-            else:
-                expired = False
-                message_text = (event.message_str or "").strip()
-                self._clear_confirmation_locked()
-
-        if expired:
-            await event.send(event.plain_result("本轮B站Cookie协助请求已超时。"))
-            return True
-
-        if message_text != "确定":
-            await event.send(event.plain_result("已取消本轮B站Cookie协助登录。"))
-            return True
-
         if auth_runtime is None:
             await event.send(
                 event.plain_result("B站登录运行时未初始化，无法发起协助登录。")
             )
-            return True
-
-        await self._start_login_flow(event, auth_runtime)
-        return True
-
-    async def handle_admin_command(
-        self, event: AstrMessageEvent, auth_runtime: Optional[Any]
-    ) -> bool:
-        """处理管理员主动更新 Cookie 指令，不受自动请求冷却限制。"""
-        if not self._is_admin_private_event(event):
             return False
-        if not self._is_user_message_event(event):
-            return False
-        message_text = (event.message_str or "").strip()
-        if not self.command or message_text.casefold() != self.command.casefold():
-            return False
-
-        self._admin_private_origin = event.unified_msg_origin
-        if not self.enabled:
-            await event.send(
-                event.plain_result("B站管理员主动更新 Cookie 未启用，请先开启相关配置。")
-            )
-            return True
-
-        async with self._lock:
-            if self._waiting_confirm:
-                self._clear_confirmation_locked()
-            # A manual request supersedes automatic cooldown and prevents a
-            # stale automatic notification from being queued immediately after it.
-            self._last_request_at = time.monotonic()
-
-        await self._start_login_flow(event, auth_runtime)
-        return True
-
-    async def _start_login_flow(self, event: AstrMessageEvent, auth_runtime: Any) -> None:
-        """生成二维码并启动一次扫码轮询。"""
-        if auth_runtime is None:
-            await event.send(event.plain_result("B站登录运行时未初始化，无法发起协助登录。"))
-            return
 
         async with self._lock:
             already_running = self._login_in_progress
@@ -133,7 +66,7 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
             await event.send(
                 event.plain_result("已有一轮B站扫码登录正在进行，请先完成或等待其结束。")
             )
-            return
+            return False
 
         try:
             timeout = aiohttp.ClientTimeout(total=10)
@@ -147,6 +80,7 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
                     unified_msg_origin=event.unified_msg_origin,
                 )
             )
+            return True
         except asyncio.CancelledError:
             self._login_in_progress = False
             raise
@@ -154,23 +88,20 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
             self._login_in_progress = False
             logger.warning(f"[bilibili] 生成管理员协助登录链接失败: {exc}")
             await event.send(event.plain_result("生成B站登录链接失败，请稍后重试。"))
+            return False
 
     def trigger_assist_request(self, reason: str) -> None:
-        """发起一次管理员辅助登录请求。"""
+        """发起一次管理员辅助登录请求（仅通知，等待管理员发送官方指令）。"""
         if not self.enabled:
             return
         self._new_task(self._trigger_assist_request(reason))
 
     async def _trigger_assist_request(self, reason: str) -> None:
-        """异步执行辅助登录请求提交流程。"""
+        """异步执行辅助登录通知提交流程。"""
         async with self._lock:
             now = time.monotonic()
             if self._login_in_progress:
                 return
-            if self._waiting_confirm:
-                if now < self._confirm_deadline:
-                    return
-                self._clear_confirmation_locked()
             if now - self._last_request_at < self.request_cooldown_seconds:
                 return
             if not self._admin_private_origin:
@@ -179,59 +110,22 @@ class BilibiliAdminCookieAssistManager(AdminAssistManager):
                 )
                 return
 
-            self._waiting_confirm = True
-            deadline = now + self.reply_timeout_seconds
-            self._confirm_deadline = deadline
             previous_request_at = self._last_request_at
             self._last_request_at = now
             unified_msg_origin = self._admin_private_origin
-            self._confirm_timeout_task = self._new_task(
-                self._expire_confirmation(deadline, unified_msg_origin)
-            )
 
         reason_text = reason or "cookie_unavailable"
         try:
             await self._send_private_text(
                 unified_msg_origin,
                 "检测到B站Cookie不可用，是否协助登录？\n"
-                "回复“确定”将发送登录链接与二维码，其他任何回复均视为不协助。\n"
-                f"本次原因: {reason_text}\n"
-                f"有效期: {int(self.reply_timeout_seconds / 60)} 分钟。",
+                "请直接发送指令 bili登录 发起扫码登录，其他任何消息均无需处理。\n"
+                f"本次原因: {reason_text}",
             )
         except Exception:
             async with self._lock:
-                if self._waiting_confirm and self._confirm_deadline == deadline:
-                    self._clear_confirmation_locked()
-                    self._last_request_at = previous_request_at
+                self._last_request_at = previous_request_at
             raise
-
-    def _clear_confirmation_locked(self) -> None:
-        """Reset confirmation state; caller must hold ``self._lock``."""
-        self._waiting_confirm = False
-        self._confirm_deadline = 0.0
-        timeout_task = self._confirm_timeout_task
-        self._confirm_timeout_task = None
-        if (
-            timeout_task is not None
-            and timeout_task is not asyncio.current_task()
-            and not timeout_task.done()
-        ):
-            timeout_task.cancel()
-
-    async def _expire_confirmation(
-        self, deadline: float, unified_msg_origin: str
-    ) -> None:
-        """Actively expire a pending confirmation without waiting for a reply."""
-        delay = max(0.0, deadline - time.monotonic())
-        if delay:
-            await asyncio.sleep(delay)
-        async with self._lock:
-            if not (self._waiting_confirm and self._confirm_deadline == deadline):
-                return
-            self._clear_confirmation_locked()
-        await self._send_private_text(
-            unified_msg_origin, "本轮B站Cookie协助请求已超时。"
-        )
 
     @staticmethod
     def _create_local_qr_code(login_url: str) -> str:
