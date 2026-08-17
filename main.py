@@ -7,7 +7,6 @@ import aiohttp
 from .core.logger import logger
 
 from astrbot.api.event import filter, AstrMessageEvent
-from astrbot.api.event.filter import PermissionType
 from astrbot.api.message_components import Reply
 from astrbot.api.star import Context, Star, register
 from astrbot.core.star.filter.event_message_type import EventMessageType
@@ -935,11 +934,15 @@ class VideoParserPlugin(Star):
     @filter.command(
         ADMIN_BILI_LOGIN_CMD,
         alias=set(ADMIN_BILI_LOGIN_ALIASES),
-        permission_type=PermissionType.ADMIN,
     )
     async def cmd_bili_admin_login(self, event: AstrMessageEvent):
         """管理员私聊发起 B 站协助扫码登录。"""
         cfg = self.config_manager
+        if not event.is_admin():
+            await event.send(
+                event.plain_result("该指令仅限管理员使用，你不是管理员。")
+            )
+            return
         if not event.is_private_chat():
             await event.send(
                 event.plain_result("该指令仅支持与管理员的私聊中使用。")
@@ -947,9 +950,20 @@ class VideoParserPlugin(Star):
             return
 
         self.admin_cookie_assist.try_update_admin_origin(event)
-        if not self.admin_cookie_assist.enabled:
+        if not cfg.bilibili.cookie_runtime_enabled:
             await event.send(
-                event.plain_result("B站管理员协助登录未启用，请先开启相关配置。")
+                event.plain_result(
+                    "B站Cookie增强未开启，无法使用协助登录。"
+                    "请先在「B站增强 → 携带Cookie解析」中开启。"
+                )
+            )
+            return
+        if not cfg.bilibili.enable_admin_assist:
+            await event.send(
+                event.plain_result(
+                    "B站管理员协助登录未开启，无法使用协助登录。"
+                    "请先在「B站增强 → 管理员协助登录 → 启用」中开启。"
+                )
             )
             return
 
@@ -957,9 +971,14 @@ class VideoParserPlugin(Star):
             event, self.bilibili_auth_runtime
         )
 
-    @filter.command(ADMIN_CLEAN_CACHE_CMD, permission_type=PermissionType.ADMIN)
+    @filter.command(ADMIN_CLEAN_CACHE_CMD)
     async def cmd_clean_cache(self, event: AstrMessageEvent):
         """管理员私聊清理媒体缓存。"""
+        if not event.is_admin():
+            await event.send(
+                event.plain_result("该指令仅限管理员使用，你不是管理员。")
+            )
+            return
         if not event.is_private_chat():
             await event.send(
                 event.plain_result("该指令仅支持与管理员的私聊中使用。")
